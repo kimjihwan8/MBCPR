@@ -3,7 +3,8 @@
     "name": "my-app",
     "slug": "my-app",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "sdkVersion": "54.0.0",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
@@ -12,11 +13,26 @@
       "supportsTablet": true
     },
     "android": {
+      "plugins": [
+        [
+          "react-native-wifi-reborn",
+          {
+            "enableLocation": true
+          }
+        ]
+      ],
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_WIFI_STATE",
+        "CHANGE_WIFI_STATE"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.kimjihwan1592.myapp"
     },
     "web": {
       "bundler": "metro",
@@ -37,6 +53,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a234fd10-cec8-4047-b33b-f4df90195a66"
+      }
     }
   }
 }

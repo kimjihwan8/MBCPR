@@ -1,0 +1,42 @@
+.material-symbols-ecg {
+  aspect-ratio: 1;
+  height: 165px;
+  position: relative;
+  width: 165px;
+}
+
+.material-symbols-ecg .vector {
+  height: 124px;
+  left: 14px;
+  position: absolute;
+  top: 21px;
+  width: 138px;
+}
+
+.vector {
+
+position: absolute;
+left: 8.33%;
+right: 8.33%;
+top: 12.5%;
+bottom: 12.5%;
+
+/* background: #FF7B4F; */
+}
+
+.mbc {
+position: absolute;
+width: 354px;
+height: 103px;
+left: 864px;
+top: 417px;
+
+font-family: 'Noto Sans KR';
+font-style: normal;
+font-weight: 900;
+font-size: 96px;
+line-height: 115px;
+text-align: center;
+
+color: #FF7B4F;
+}
