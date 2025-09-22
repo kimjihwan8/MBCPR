@@ -86,7 +86,7 @@ export default function TrainingSetup() {
             dynamicStyles.choiceButton,
             styles.blue
           ]}
-          onPress={() => router.push("/training")}
+          onPress={() => router.push("/guide" as any)}
         >
           <Text style={dynamicStyles.choiceText}>방법</Text>
         </Pressable>
@@ -96,7 +96,7 @@ export default function TrainingSetup() {
             dynamicStyles.choiceButton,
             styles.orange
           ]}
-          onPress={() => router.push("/")}
+          onPress={() => router.push("/training")}
         >
           <Text style={dynamicStyles.choiceText}>실습</Text>
         </Pressable>

@@ -67,7 +67,7 @@ export default function SettingsDrawer({ onClose, visible }: Props) {
       </Animated.View>
 
       {/* 모달 */}
-      {wifiVisible && <WifiModal onClose={() => setWifiVisible(false)} />}
+      {/* {wifiVisible && <WifiModal onClose={() => setWifiVisible(false)} />} */}
       {soundVisible && <SoundSettingsModal onClose={() => setSoundVisible(false)} />}
     </>
   );

@@ -177,7 +177,6 @@ export default function WifiModal({ onClose }: Props) {
             <Text style={styles.title}>WiFi 연결</Text>
             <Pressable style={styles.button} onPress={() => {
                 connectedWifi()
-                // setStep('wifiFound')
               }}>
               <Text style={styles.buttonText}>보드 검색</Text>
             </Pressable>
