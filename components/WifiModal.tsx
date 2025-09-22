@@ -1,23 +1,25 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  View, 
-  Text, 
-  Pressable, 
-  StyleSheet, 
-  TextInput, 
-  ActivityIndicator, 
-  Platform, 
-  PermissionsAndroid, 
-  Alert,
-  useWindowDimensions,
-  ScrollView,
-} from 'react-native';
 import axios from 'axios';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  PermissionsAndroid,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import WifiManager from 'react-native-wifi-reborn';
 
 interface Props {
   onClose: () => void;
 }
+
+
 
 export default function WifiModal({ onClose }: Props) {
   const [step, setStep] = useState<'idle' | 'scanning' | 'wifiFound' | 'inputCredentials' | 'connecting' | 'connected' | 'error'>('idle');
@@ -27,6 +29,30 @@ export default function WifiModal({ onClose }: Props) {
   const [password, setPassword] = useState('');
 
   const { width } = useWindowDimensions();
+
+useEffect(() => {
+    // step이 'scanning'일 때만 아래 로직을 실행합니다.
+    if (step === 'scanning') {
+      const checkBoardConnection = async () => {
+        try {
+          // true 조건: API 호출이 성공하면 연결된 것으로 판단
+          console.log("API 요청: 서버-보드 연결 상태를 확인합니다...");
+          await api.get('/RealTime/board/checkConnection');
+
+          // 성공 시 'connected' 단계로 전환 (true)
+          console.log("연결 확인 성공 (true). 'connected' 단계로 이동합니다.");
+          setStep('connected');
+
+        } catch (error) {
+          // false 조건: API 호출이 실패하면 연결되지 않은 것으로 판단
+          console.log("연결 확인 실패 (false). 'wifiFound' 단계로 이동합니다.");
+          setStep('wifiFound'); // WiFi 목록을 보여주는 단계로 이동
+        }
+      };
+
+      checkBoardConnection();
+    }
+  }, [step]);
 
   const connectedWifi = async () => {
       const hasPermission = await requestWifiPermissions();
