@@ -1,6 +1,6 @@
 import React from 'react';
 import { SafeAreaView, StyleSheet } from 'react-native';
-import TrainingFlowScreen from './components/TrainingFlowScreen';
+import TrainingFlowScreen from './app/TrainingFlowScreen';
 
 export default function App() {
   return (
