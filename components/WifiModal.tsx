@@ -45,8 +45,7 @@ useEffect(() => {
 
         } catch (error) {
           // false 조건: API 호출이 실패하면 연결되지 않은 것으로 판단
-          console.log("연결 확인 실패 (false). 'wifiFound' 단계로 이동합니다.");
-          setStep('wifiFound'); // WiFi 목록을 보여주는 단계로 이동
+          console.log("연결 확인 실패 (false). wifi 검색 실행.");
         }
       };
 
