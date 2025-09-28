@@ -1,10 +1,14 @@
-import React from "react";
+import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-const CountdownScreen = ({ countdown }) => (
-    <View style={StyleSheet.centerContainer}>
-        <Text style={StyleSheet.countdownText}>{countdown}</Text>
-    </View>
+interface CountdownScreenProps {
+  countdown: number;
+}
+
+const CountdownScreen: React.FC<CountdownScreenProps> = ({ countdown }) => (
+  <View style={styles.centerContainer}>
+    <Text style={styles.countdownText}>{countdown}</Text>
+  </View>
 );
 
 const styles = StyleSheet.create({
@@ -19,6 +23,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FF7F50',
   },
-})
+});
 
 export default CountdownScreen;
