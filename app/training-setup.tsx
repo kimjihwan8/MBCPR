@@ -96,7 +96,7 @@ export default function TrainingSetup() {
             dynamicStyles.choiceButton,
             styles.orange
           ]}
-          onPress={() => router.push("/training")}
+          onPress={() => router.push("/TrainingFlowScreen")}
         >
           <Text style={dynamicStyles.choiceText}>실습</Text>
         </Pressable>
