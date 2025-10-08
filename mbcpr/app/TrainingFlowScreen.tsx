@@ -10,7 +10,7 @@ import LoadingScreen from '../components/LoadingScreen';
 import TrainingSidebar from '../components/TrainingSidebar';
 
 // --- 설정 ---
-const BASE_URL = 'http://YOUR_SERVER_IP:PORT';
+const BASE_URL = 'http://13.209.6.11:8080';
 
 const api = axios.create({
   baseURL: BASE_URL,
