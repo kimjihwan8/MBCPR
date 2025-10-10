@@ -4,7 +4,7 @@
     "slug": "my-app",
     "version": "1.0.0",
     "sdkVersion": "54.0.0",
-    "orientation": "portrait",
+    "orientation": "landscape",
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
@@ -13,6 +13,11 @@
       "supportsTablet": true
     },
     "android": {
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyB1_3Xf3GF_NjWw0VTCja54iY84iBQgFiw"
+        }
+      },
       "plugins": [
         [
           "react-native-wifi-reborn",

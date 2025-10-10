@@ -54,7 +54,7 @@ export default function WifiModal({ onClose }: Props) {
 
   const handleSubmit = async (ssid: string, password: string) => {
     try {
-      const url = `http://192.168.4.1/connect?ssid=${encodeURIComponent(ssid)}&password=${encodeURIComponent(password)}`;
+      const url = `http://13.209.6.11/connect?ssid=${encodeURIComponent(ssid)}&password=${encodeURIComponent(password)}`;
       const response = await axios.get(url);
 
         // ESP32 서버는 성공 시 "Success" 문자열 반환
