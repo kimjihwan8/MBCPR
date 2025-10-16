@@ -65,35 +65,37 @@ const TrainingFlowScreen: React.FC = () => {
   }, [screen]);
 
   // ✅ 2. countdown → training 으로 전환
-  useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
+// countdown
+useEffect(() => {
+  let timer: number | null = null; // NodeJS.Timeout → number
 
-    if (screen === 'countdown' && countdown > 0) {
-      timer = setTimeout(() => {
-        setCountdown(prev => prev - 1);
-      }, 1000);
-    } else if (screen === 'countdown' && countdown === 0) {
-      console.log('🚀 카운트다운 완료 → training 화면으로 전환');
-      setScreen('training');
-    }
+  if (screen === 'countdown' && countdown > 0) {
+    timer = setTimeout(() => {
+      setCountdown(prev => prev - 1);
+    }, 1000);
+  } else if (screen === 'countdown' && countdown === 0) {
+    console.log('🚀 카운트다운 완료 → training 화면으로 전환');
+    setScreen('training');
+  }
 
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [screen, countdown]);
+  return () => {
+    if (timer) clearTimeout(timer);
+  };
+}, [screen, countdown]);
 
-  // ✅ 3. 훈련 시간 카운트업 (optional)
-  useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
-    if (screen === 'training') {
-      timer = setInterval(() => {
-        setTrainingTime(prev => prev + 1);
-      }, 1000);
-    }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [screen]);
+// training
+useEffect(() => {
+  let timer: number | null = null; // NodeJS.Timeout → number
+  if (screen === 'training') {
+    timer = setInterval(() => {
+      setTrainingTime(prev => prev + 1);
+    }, 1000);
+  }
+  return () => {
+    if (timer) clearInterval(timer);
+  };
+}, [screen]);
+
 
   // --- 재시도 ---
   const handleRetry = () => {
