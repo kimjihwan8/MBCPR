@@ -1,6 +1,6 @@
 import axios from 'axios';
 import React, { useEffect, useState, useRef } from 'react';
-import { SafeAreaView, StyleSheet, Text, View, Alert } from 'react-native';
+import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
 // --- 분리된 컴포넌트들 불러오기 ---
 import CountdownScreen from '../components/CountdownScreen';
@@ -142,7 +142,7 @@ const TrainingFlowScreen: React.FC = () => {
 
   const renderTrainingScreen = () => (
     <SafeAreaView style={styles.trainingContainer}>
-      {/* 이전 버튼 제거: onBackPress prop 전달하지 않음 */}
+      {/* onBackPress 제거 */}
       <TrainingSidebar formattedTime={formatTime(trainingTime)} />
       <View style={styles.mainContent}>
         <Text style={styles.title}>가슴압박</Text>

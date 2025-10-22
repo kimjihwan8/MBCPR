@@ -3,7 +3,6 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 interface TrainingSidebarProps {
   formattedTime: string;
-  onBackPress: () => void;
 }
 
 /**
@@ -13,7 +12,6 @@ const TrainingSidebar: React.FC<TrainingSidebarProps> = ({ formattedTime}) => {
   return (
     <View style={styles.sidebar}>
       <TouchableOpacity style={styles.backButtonContainer} >
-        <Text style={styles.backButton}>{'<'}</Text>
       </TouchableOpacity>
       <Text style={styles.timer}>{formattedTime}</Text>
       <View>
