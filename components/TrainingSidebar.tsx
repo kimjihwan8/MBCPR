@@ -9,10 +9,10 @@ interface TrainingSidebarProps {
 /**
  * 훈련 화면의 사이드바 UI
  */
-const TrainingSidebar: React.FC<TrainingSidebarProps> = ({ formattedTime, onBackPress }) => {
+const TrainingSidebar: React.FC<TrainingSidebarProps> = ({ formattedTime}) => {
   return (
     <View style={styles.sidebar}>
-      <TouchableOpacity style={styles.backButtonContainer} onPress={onBackPress}>
+      <TouchableOpacity style={styles.backButtonContainer} >
         <Text style={styles.backButton}>{'<'}</Text>
       </TouchableOpacity>
       <Text style={styles.timer}>{formattedTime}</Text>

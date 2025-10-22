@@ -1,6 +1,6 @@
 import axios from 'axios';
-import React, { useEffect, useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { SafeAreaView, StyleSheet, Text, View, Alert } from 'react-native';
 
 // --- 분리된 컴포넌트들 불러오기 ---
 import CountdownScreen from '../components/CountdownScreen';
@@ -18,6 +18,8 @@ const api = axios.create({
 
 type ScreenState = 'loading' | 'countdown' | 'training' | 'error';
 
+const MAX_TRAINING_SECONDS = 180; // 3분 = 180초
+
 const TrainingFlowScreen: React.FC = () => {
   const [screen, setScreen] = useState<ScreenState>('loading');
   const [countdown, setCountdown] = useState<number>(3);
@@ -25,7 +27,11 @@ const TrainingFlowScreen: React.FC = () => {
   const [feedback, setFeedback] = useState<string>('정확한 자세로 압박을 시작하세요.');
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ 1. 로딩 → 서버 체크 및 통신 시작
+  // 타이머 참조 (타입 안전)
+  const countdownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trainingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 1. 로딩 → 서버 체크 및 통신 시작
   useEffect(() => {
     if (screen === 'loading') {
       const startTrainingSequence = async () => {
@@ -36,7 +42,7 @@ const TrainingFlowScreen: React.FC = () => {
 
           if (healthRes.status !== 200) throw new Error('서버 응답 이상');
 
-          const serialNumber = 'BOARD123'; // ✅ 실제 보드 시리얼로 교체 가능
+          const serialNumber = 'BOARD123'; // 실제 보드 시리얼로 교체 가능
 
           console.log('✅ 보드 연결 확인 중...');
           const checkRes = await api.post('/api/cpr/check-connection', { serialNumber });
@@ -64,44 +70,67 @@ const TrainingFlowScreen: React.FC = () => {
     }
   }, [screen]);
 
-  // ✅ 2. countdown → training 으로 전환
-// countdown
-useEffect(() => {
-  let timer: number | null = null; // NodeJS.Timeout → number
+  // countdown 처리
+  useEffect(() => {
+    if (screen === 'countdown') {
+      if (countdown > 0) {
+        countdownTimer.current = setTimeout(() => {
+          setCountdown(prev => prev - 1);
+        }, 1000);
+      } else if (countdown === 0) {
+        console.log('🚀 카운트다운 완료 → training 화면으로 전환');
+        setScreen('training');
+      }
+    }
 
-  if (screen === 'countdown' && countdown > 0) {
-    timer = setTimeout(() => {
-      setCountdown(prev => prev - 1);
-    }, 1000);
-  } else if (screen === 'countdown' && countdown === 0) {
-    console.log('🚀 카운트다운 완료 → training 화면으로 전환');
-    setScreen('training');
-  }
+    return () => {
+      if (countdownTimer.current) {
+        clearTimeout(countdownTimer.current);
+        countdownTimer.current = null;
+      }
+    };
+  }, [screen, countdown]);
 
-  return () => {
-    if (timer) clearTimeout(timer);
-  };
-}, [screen, countdown]);
+  // training 처리 — 3분(180초)이 되면 멈추도록
+  useEffect(() => {
+    if (screen === 'training') {
+      // 초기화(혹시 이전에 남아있다면)
+      if (trainingTimer.current) {
+        clearInterval(trainingTimer.current);
+        trainingTimer.current = null;
+      }
 
-// training
-useEffect(() => {
-  let timer: number | null = null; // NodeJS.Timeout → number
-  if (screen === 'training') {
-    timer = setInterval(() => {
-      setTrainingTime(prev => prev + 1);
-    }, 1000);
-  }
-  return () => {
-    if (timer) clearInterval(timer);
-  };
-}, [screen]);
+      trainingTimer.current = setInterval(() => {
+        setTrainingTime(prev => {
+          const next = prev + 1;
+          if (next >= MAX_TRAINING_SECONDS) {
+            // 3분 도달 시 타이머 정지 및 피드백 변경
+            if (trainingTimer.current) {
+              clearInterval(trainingTimer.current);
+              trainingTimer.current = null;
+            }
+            setFeedback('훈련이 종료되었습니다. 잘하셨어요!');
+            return MAX_TRAINING_SECONDS; // 정확히 180으로 고정
+          }
+          return next;
+        });
+      }, 1000);
+    }
 
+    return () => {
+      if (trainingTimer.current) {
+        clearInterval(trainingTimer.current);
+        trainingTimer.current = null;
+      }
+    };
+  }, [screen]);
 
-  // --- 재시도 ---
+  // 재시도
   const handleRetry = () => {
     setError(null);
     setCountdown(3);
     setTrainingTime(0);
+    setFeedback('정확한 자세로 압박을 시작하세요.');
     setScreen('loading');
   };
 
@@ -113,7 +142,8 @@ useEffect(() => {
 
   const renderTrainingScreen = () => (
     <SafeAreaView style={styles.trainingContainer}>
-      <TrainingSidebar formattedTime={formatTime(trainingTime)} onBackPress={handleBackPress} />
+      {/* 이전 버튼 제거: onBackPress prop 전달하지 않음 */}
+      <TrainingSidebar formattedTime={formatTime(trainingTime)} />
       <View style={styles.mainContent}>
         <Text style={styles.title}>가슴압박</Text>
         <Text style={styles.subtitle}>일정한 간격으로 알맞은 깊이를 눌러주세요.</Text>
@@ -124,7 +154,7 @@ useEffect(() => {
             <Text style={styles.feedbackText}>{feedback}</Text>
           </View>
           <View style={styles.imagePlaceholder}>
-            <Text style={styles.placeholderText}></Text>
+            <Text style={styles.placeholderText}>{/* 이미지 자리 */}</Text>
           </View>
         </View>
       </View>
