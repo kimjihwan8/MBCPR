@@ -17,7 +17,7 @@ const BASE_URL = 'http://13.209.6.11:8080';
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 5000,
+  timeout: 15000,
 });
 
 type ScreenState = 'loading' | 'countdown' | 'training' | 'error';
@@ -49,7 +49,7 @@ const TrainingFlowScreen: React.FC = () => {
 
         if (healthRes.status !== 200) throw new Error('서버 응답 이상');
 
-        const serialNumber = 'BOARD123'; // 실제 보드 시리얼로 교체 가능
+        const serialNumber = 'BOARD123';
 
         console.log('✅ 보드 연결 확인 중...');
         const checkRes = await api.post('/api/cpr/check-connection', { serialNumber });
