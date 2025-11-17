@@ -1,256 +1,577 @@
 // src/screens/TrainingFlowScreen.tsx
-import axios, { isCancel } from 'axios';
-import React, { useEffect, useState, useRef } from 'react';
-import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
-// --- 분리된 컴포넌트들 불러오기 ---
-import CountdownScreen from '../components/CountdownScreen';
-import ErrorScreen from '../components/ErrorScreen';
-import LoadingScreen from '../components/LoadingScreen';
-import TrainingSidebar from '../components/TrainingSidebar';
+import axios from "axios";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { WebView } from "react-native-webview";
 
-// --- 설정 ---
-const BASE_URL = 'http://13.209.6.11:8080';
+import CountdownScreen from "../components/CountdownScreen";
+import ErrorScreen from "../components/ErrorScreen";
+import LoadingScreen from "../components/LoadingScreen";
+import TrainingSidebar from "../components/TrainingSidebar";
 
-// 1. 스트리밍 API: timeout: 0 유지 (AbortController로 제어)
-const api = axios.create({
-  baseURL: BASE_URL,
-  timeout: 0,
+const CONFIG = {
+  BASE_URL: "http://13.209.6.11:8080",
+  SERIAL_NUMBER: "BOARD123",
+  TIMEOUT: 10000,
+  COUNTDOWN_SECONDS: 3,
+  MAX_TRAINING_SECONDS: 180,
+  TIMER_INTERVAL: 1000,
+} as const;
+
+const apiClient = axios.create({
+  baseURL: CONFIG.BASE_URL,
+  timeout: CONFIG.TIMEOUT,
+  headers: { "Content-Type": "application/json" },
 });
 
-// 2. 초기 연결 API: 10초 타임아웃 적용 (로딩 화면 안정성 확보)
-const initialApi = axios.create({
-  baseURL: BASE_URL,
-  timeout: 10000, // 10초 타임아웃
-});
+type AppState = "loading" | "countdown" | "training" | "error";
+type QualityType = "good" | "too_slow" | "too_fast" | "too_shallow";
 
-type ScreenState = 'loading' | 'countdown' | 'training' | 'error';
-
-const MAX_TRAINING_SECONDS = 180; // 3분 = 180초
+interface StreamData {
+  pressure: number;
+  compressionRate: number;
+  quality: QualityType;
+  timestamp: number;
+}
 
 const TrainingFlowScreen: React.FC = () => {
-  const [screen, setScreen] = useState<ScreenState>('loading');
-  const [countdown, setCountdown] = useState<number>(3);
-  const [trainingTime, setTrainingTime] = useState<number>(0);
-  const [feedback, setFeedback] = useState<string>('정확한 자세로 압박을 시작하세요.');
-  const [error, setError] = useState<string | null>(null);
+  const [appState, setAppState] = useState<AppState>("loading");
+  const [countdown, setCountdown] = useState<number>(CONFIG.COUNTDOWN_SECONDS);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [feedbackMessage, setFeedbackMessage] =
+    useState<string>("정확한 자세로 압박을 시작하세요.");
+  const [errorMessage, setErrorMessage] = useState<string>("");
+  const [lastStreamData, setLastStreamData] = useState<StreamData | null>(null);
 
-  const countdownTimer = useRef<number | null>(null);
-  const trainingTimer = useRef<number | null>(null);
+  const countdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trainingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef<boolean>(true);
 
-  // 1. 로딩 → 서버 체크 및 통신 시작
-  useEffect(() => {
-    if (screen !== 'loading') return;
-
-    let mounted = true;
-
-    const startTrainingSequence = async () => {
-      try {
-        console.log('✅ 서버 상태 확인 중...');
-        const healthRes = await initialApi.get('/api/cpr/health');
-        console.log('🩺 서버 상태 응답:', healthRes.status);
-
-        if (healthRes.status !== 200) throw new Error('서버 응답 이상');
-
-        const serialNumber = 'BOARD123';
-
-        console.log('✅ 보드 연결 확인 중...');
-        const checkRes = await initialApi.post('/api/cpr/check-connection', { serialNumber });
-        console.log('🔌 보드 연결 응답:', checkRes.status);
-
-        console.log('✅ 실시간 통신 시작 요청 중...');
-        const startRes = await initialApi.post('/api/cpr/start-communication', { serialNumber });
-        console.log('📡 통신 시작 응답:', startRes.status);
-
-        if (!mounted) return;
-        setCountdown(3);
-        setScreen('countdown');
-      } catch (err: unknown) {
-        const status = (err as any)?.response?.status ?? null;
-        const data = (err as any)?.response?.data ?? (err as any)?.message ?? err;
-        console.error('❌ startTrainingSequence 오류:', { status, data });
-
-        if (!mounted) return;
-        setError('서버 또는 장비 연결에 실패했습니다.\n잠시 후 다시 시도해주세요.');
-        setScreen('error');
+  // 피드백 업데이트
+  const updateFeedback = useCallback(
+    (quality: QualityType, pressure: number) => {
+      let newMessage = "";
+      if (pressure < 10) {
+        newMessage = "정확한 자세로 압박을 시작하세요.";
+      } else {
+        switch (quality) {
+          case "too_fast":
+            newMessage = "너무 빠릅니다. 속도를 늦춰주세요.";
+            break;
+          case "too_slow":
+            newMessage = "너무 느립니다. 속도를 높여주세요.";
+            break;
+          case "too_shallow":
+            newMessage = "너무 얕습니다. 더 깊게 눌러주세요.";
+            break;
+          case "good":
+            newMessage = "좋아요! 이 속도를 유지하세요.";
+            break;
+          default:
+            newMessage = "정확한 자세로 압박을 계속하세요.";
+            break;
+        }
       }
-    };
+      console.log(`✅ 피드백 업데이트: "${newMessage}"`);
+      setFeedbackMessage(newMessage);
+    },
+    []
+  );
 
-    startTrainingSequence();
-
-    return () => {
-      mounted = false;
-    };
-  }, [screen]);
-
-  // 2. 카운트다운 처리
-  useEffect(() => {
-    if (screen !== 'countdown') return;
-
-    if (countdownTimer.current !== null) {
-      clearTimeout(countdownTimer.current);
-      countdownTimer.current = null;
+  // 서버 헬스체크
+  const checkServerHealth = async (): Promise<boolean> => {
+    console.log("🔍 서버 헬스체크 시작...");
+    try {
+      const response = await apiClient.get("/api/cpr/health");
+      console.log("✅ 서버 헬스체크 성공");
+      return response.status === 200;
+    } catch (error) {
+      console.error("❌ 서버 헬스체크 실패:", error);
+      throw new Error("서버에 연결할 수 없습니다.");
     }
+  };
+
+  // 보드 연결 확인
+  const checkBoardConnection = async (): Promise<boolean> => {
+    console.log("🔍 보드 연결 확인 중...");
+    try {
+      const response = await apiClient.post("/api/cpr/check-connection", {
+        serialNumber: CONFIG.SERIAL_NUMBER,
+      });
+      console.log("📡 보드 연결 응답:", response.data);
+      if (response.data.connected === true) {
+        console.log("✅ 보드 연결 확인 완료");
+        return true;
+      }
+      throw new Error(response.data.message || "보드 연결에 실패했습니다.");
+    } catch (error: any) {
+      console.error("❌ 보드 연결 실패:", error);
+      throw new Error(
+        error.response?.data?.message ||
+          error.message ||
+          "보드 연결에 실패했습니다."
+      );
+    }
+  };
+
+  // 통신 시작
+  const startCommunication = async (): Promise<boolean> => {
+    console.log("🚀 실시간 통신 시작 요청...");
+    try {
+      const response = await apiClient.post("/api/cpr/start-communication", {
+        serialNumber: CONFIG.SERIAL_NUMBER,
+      });
+      console.log("📡 통신 시작 응답:", response.data);
+      if (response.data.success === true) {
+        console.log("✅ 실시간 통신 시작 성공");
+        return true;
+      }
+      throw new Error(response.data.message || "통신 시작에 실패했습니다.");
+    } catch (error: any) {
+      console.error("❌ 통신 시작 실패:", error);
+      throw new Error(
+        error.response?.data?.message ||
+          error.message ||
+          "통신 시작에 실패했습니다."
+      );
+    }
+  };
+
+  // 통신 중단
+  const stopCommunication = async (): Promise<void> => {
+    console.log("🛑 통신 중단 요청...");
+    try {
+      const response = await apiClient.post("/api/cpr/stop-communication", {
+        serialNumber: CONFIG.SERIAL_NUMBER,
+      });
+      console.log("📡 통신 중단 응답:", response.data);
+      if (response.data.success === true) {
+        console.log("✅ 통신 중단 성공");
+      } else {
+        console.warn("⚠️ 통신 중단 실패:", response.data.message);
+      }
+    } catch (error: any) {
+      console.error("❌ 통신 중단 실패:", error);
+    }
+  };
+
+  // 정리
+  const clearAllTimers = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearTimeout(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    if (trainingTimerRef.current) {
+      clearInterval(trainingTimerRef.current);
+      trainingTimerRef.current = null;
+    }
+  }, []);
+
+  // 초기화
+  const initializeTraining = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
+    console.log("🎬 트레이닝 초기화 시작");
+
+    try {
+      await checkServerHealth();
+      if (!isMountedRef.current) return;
+
+      await checkBoardConnection();
+      if (!isMountedRef.current) return;
+
+      await startCommunication();
+      if (!isMountedRef.current) return;
+
+      console.log("✅ 초기화 완료, 카운트다운 시작");
+      setAppState("countdown");
+    } catch (error: any) {
+      console.error("❌ 초기화 실패:", error);
+      if (!isMountedRef.current) return;
+
+      setErrorMessage(error.message || "서버 또는 장비 연결에 실패했습니다.");
+      setAppState("error");
+    }
+  }, []);
+
+  // 카운트다운
+  useEffect(() => {
+    if (appState !== "countdown") return;
+
+    console.log(`⏱️ 카운트다운: ${countdown}`);
 
     if (countdown > 0) {
-      countdownTimer.current = global.setTimeout(() => {
-        setCountdown(prev => prev - 1);
-      }, 1000) as unknown as number;
+      countdownTimerRef.current = setTimeout(() => {
+        setCountdown(countdown - 1);
+      }, 1000);
     } else {
-      setScreen('training');
+      console.log("🏁 카운트다운 종료, 트레이닝 시작");
+      setAppState("training");
     }
 
     return () => {
-      if (countdownTimer.current !== null) {
-        clearTimeout(countdownTimer.current);
-        countdownTimer.current = null;
-      }
+      if (countdownTimerRef.current) clearTimeout(countdownTimerRef.current);
     };
-  }, [screen, countdown]);
+  }, [appState, countdown]);
 
-  // 3. 트레이닝 처리
+  // 트레이닝
   useEffect(() => {
-    if (screen !== 'training') return;
+    if (appState !== "training") return;
 
-    const streamInterval = setInterval(async () => {
-      const controller = new AbortController();
-      const abortTimer = global.setTimeout(() => controller.abort(), 1000);
+    console.log("🏃 트레이닝 모드 시작");
+    console.log(
+      "🌐 SSE 스트림 URL:",
+      `${CONFIG.BASE_URL}/api/cpr/stream/${CONFIG.SERIAL_NUMBER}`
+    );
 
-      try {
-        const res = await api.get('/api/cpr/stream/BOARD123', {
-          signal: controller.signal,
-        });
-
-        clearTimeout(abortTimer);
-        const quality = res?.data?.quality;
-
-        if (quality === 'too_fast') setFeedback('너무 빠릅니다. 속도를 늦춰주세요.');
-        else if (quality === 'too_slow') setFeedback('너무 느립니다. 속도를 높여주세요.');
-        else if (quality === 'good') setFeedback('좋아요! 이 속도를 유지하세요.');
-      } catch (err) {
-        clearTimeout(abortTimer);
-        if (isCancel(err) || (err as any)?.name === 'AbortError') return;
-        console.error('스트림 데이터 수신 오류:', err);
-      }
-    }, 1000);
-
-    if (trainingTimer.current !== null) {
-      clearInterval(trainingTimer.current);
-      trainingTimer.current = null;
-    }
-
-    trainingTimer.current = global.setInterval(() => {
-      setTrainingTime(prev => {
+    trainingTimerRef.current = setInterval(() => {
+      setElapsedTime((prev) => {
         const next = prev + 1;
-        if (next >= MAX_TRAINING_SECONDS) {
-          if (trainingTimer.current !== null) {
-            clearInterval(trainingTimer.current);
-            trainingTimer.current = null;
-          }
-          clearInterval(streamInterval);
-          setFeedback('훈련이 종료되었습니다. 잘하셨어요!');
-          return MAX_TRAINING_SECONDS;
+        if (next >= CONFIG.MAX_TRAINING_SECONDS) {
+          console.log("⏰ 트레이닝 시간 종료 (3분)");
+          clearAllTimers();
+          stopCommunication();
+          setFeedbackMessage("훈련이 종료되었습니다. 잘하셨어요!");
+          return CONFIG.MAX_TRAINING_SECONDS;
         }
         return next;
       });
-    }, 1000) as unknown as number;
+    }, CONFIG.TIMER_INTERVAL);
 
     return () => {
-      clearInterval(streamInterval);
-      if (trainingTimer.current !== null) {
-        clearInterval(trainingTimer.current);
-        trainingTimer.current = null;
-      }
+      clearAllTimers();
     };
-  }, [screen]);
+  }, [appState, clearAllTimers]);
 
-  const handleRetry = () => {
-    if (countdownTimer.current !== null) {
-      clearTimeout(countdownTimer.current);
-      countdownTimer.current = null;
+  // 로딩 상태
+  useEffect(() => {
+    if (appState !== "loading") return;
+    initializeTraining();
+  }, [appState, initializeTraining]);
+
+  // 언마운트
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      clearAllTimers();
+      stopCommunication();
+    };
+  }, [clearAllTimers]);
+
+  // WebView 메시지 핸들러
+  const handleWebViewMessage = useCallback(
+    (event: any) => {
+      try {
+        const txt = event?.nativeEvent?.data;
+        if (!txt) return;
+
+        console.log("📩 [WebView] 수신:", txt);
+        const msg = JSON.parse(txt);
+
+        if (msg.type === "connected") {
+          console.log("✅ [WebView] SSE 연결 완료");
+          return;
+        }
+
+        if (msg.type === "data") {
+          const data = msg.payload;
+          console.log("📦 [WebView] 데이터:", JSON.stringify(data));
+
+          // 필드 추출
+          const pressure = Number(data.pressure) || 0;
+          const compressionRate = Math.round(Number(data.compressionRate) || 0);
+          const quality = String(data.quality || "")
+            .toLowerCase()
+            .trim();
+          const timestamp = Number(data.timestamp) || Date.now();
+
+          // quality 검증
+          if (
+            !["good", "too_slow", "too_fast", "too_shallow"].includes(quality)
+          ) {
+            console.warn("⚠️ [WebView] 잘못된 quality:", quality);
+            return;
+          }
+
+          const normalized: StreamData = {
+            pressure,
+            compressionRate,
+            quality: quality as QualityType,
+            timestamp,
+          };
+
+          console.log("✅ [WebView] 정규화 완료:", JSON.stringify(normalized));
+          setLastStreamData(normalized);
+          updateFeedback(normalized.quality, normalized.pressure);
+        }
+
+        if (msg.type === "error") {
+          console.error("❌ [WebView] 에러:", msg.payload);
+        }
+      } catch (e) {
+        console.error("❌ [WebView] 파싱 오류:", e);
+      }
+    },
+    [updateFeedback]
+  );
+
+  // WebView HTML - SSE 스트림 수신
+  const sseHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body>
+<script>
+(function() {
+  var url = "${CONFIG.BASE_URL}/api/cpr/stream/${CONFIG.SERIAL_NUMBER}";
+  var es = null;
+  var reconnectTimer = null;
+  var messageCount = 0;
+
+  console.log("🚀 [SSE] 초기화:", url);
+
+  function sendToRN(type, payload) {
+    try {
+      var msg = JSON.stringify({ type: type, payload: payload });
+      window.ReactNativeWebView.postMessage(msg);
+      console.log("✅ [SSE] RN 전송:", type, payload);
+    } catch (e) {
+      console.error("❌ [SSE] RN 전송 실패:", e);
     }
-    if (trainingTimer.current !== null) {
-      clearInterval(trainingTimer.current);
-      trainingTimer.current = null;
+  }
+
+  function connect() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
     }
 
-    setError(null);
-    setCountdown(3);
-    setTrainingTime(0);
-    setFeedback('정확한 자세로 압박을 시작하세요.');
-    setScreen('loading');
+    try {
+      console.log("🔌 [SSE] 연결 시도...");
+      es = new EventSource(url);
+
+      es.onopen = function() {
+        console.log("✅ [SSE] 연결 성공");
+        sendToRN("connected", { url: url, time: Date.now() });
+      };
+
+      es.onmessage = function(event) {
+        messageCount++;
+        console.log("📨 [SSE] 기본 메시지 #" + messageCount + ":", event.data);
+        sendToRN("raw_message", { data: event.data, count: messageCount });
+
+        try {
+          var data = JSON.parse(event.data);
+          console.log("📦 [SSE] 파싱 성공:", JSON.stringify(data));
+          sendToRN("data", data);
+        } catch (e) {
+          console.warn("⚠️ [SSE] JSON 파싱 실패:", event.data);
+        }
+      };
+
+      // sensor-data 이벤트 리스너
+      es.addEventListener("sensor-data", function(event) {
+        messageCount++;
+        console.log("📨 [SSE] sensor-data #" + messageCount + ":", event.data);
+        sendToRN("raw_sensor_data", { data: event.data, count: messageCount });
+
+        try {
+          var data = JSON.parse(event.data);
+          console.log("📦 [SSE] sensor-data 파싱:", JSON.stringify(data));
+          sendToRN("data", data);
+        } catch (e) {
+          console.warn("⚠️ [SSE] sensor-data 파싱 실패:", event.data);
+        }
+      });
+
+      // connected 이벤트 리스너
+      es.addEventListener("connected", function(event) {
+        console.log("📨 [SSE] connected 이벤트:", event.data);
+        sendToRN("server_connected", { data: event.data });
+      });
+
+      es.onerror = function(error) {
+        console.error("❌ [SSE] 에러 발생");
+        sendToRN("error", { message: "SSE connection error", count: messageCount });
+        
+        try {
+          es.close();
+        } catch (e) {}
+
+        console.log("🔄 [SSE] 3초 후 재연결...");
+        reconnectTimer = setTimeout(connect, 3000);
+      };
+
+    } catch (e) {
+      console.error("❌ [SSE] 연결 예외:", e);
+      sendToRN("error", { message: "Connection exception: " + e.message });
+      reconnectTimer = setTimeout(connect, 3000);
+    }
+  }
+
+  // 5초마다 상태 로깅
+  setInterval(function() {
+    console.log("📊 [SSE] 상태 체크 - 총 " + messageCount + "개 메시지 수신");
+    sendToRN("status", { messageCount: messageCount, time: Date.now() });
+  }, 5000);
+
+  connect();
+})();
+</script>
+</body>
+</html>
+`;
+
+  // 시간 포맷
+  const formatTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const secs = (seconds % 60).toString().padStart(2, "0");
+    return `${minutes}:${secs}`;
   };
 
-  const formatTime = (seconds: number) => {
-    const mm = Math.floor(seconds / 60).toString().padStart(2, '0');
-    const ss = (seconds % 60).toString().padStart(2, '0');
-    return `${mm}:${ss}`;
-  };
+  // 재시도
+  const handleRetry = useCallback(async () => {
+    console.log("🔄 재시도 시작");
+    clearAllTimers();
+    try {
+      await stopCommunication();
+    } catch {}
+    setErrorMessage("");
+    setCountdown(CONFIG.COUNTDOWN_SECONDS);
+    setElapsedTime(0);
+    setFeedbackMessage("정확한 자세로 압박을 시작하세요.");
+    setLastStreamData(null);
+    setAppState("loading");
+  }, [clearAllTimers]);
 
+  // UI 렌더링
   const renderTrainingScreen = () => (
-    <SafeAreaView style={styles.trainingContainer}>
-      <TrainingSidebar formattedTime={formatTime(trainingTime)} />
+    <SafeAreaView style={styles.container}>
+      <TrainingSidebar formattedTime={formatTime(elapsedTime)} />
       <View style={styles.mainContent}>
         <Text style={styles.title}>가슴압박</Text>
-        <Text style={styles.subtitle}>일정한 간격으로 알맞은 깊이를 눌러주세요.</Text>
-        <Text style={styles.instructionText}>튀어나온 부분을 눌러주세요.</Text>
+        <Text style={styles.subtitle}>
+          일정한 간격으로 알맞은 깊이를 눌러주세요.
+        </Text>
+        <Text style={styles.instruction}>튀어나온 부분을 눌러주세요.</Text>
         <View style={styles.contentRow}>
-          <View style={styles.feedbackContainer}>
+          <View style={styles.feedbackBox}>
             <Text style={styles.feedbackTitle}>피드백</Text>
-            <Text style={styles.feedbackText}>{feedback}</Text>
+            <Text style={styles.feedbackText}>{feedbackMessage}</Text>
+
+            {__DEV__ && lastStreamData && (
+              <View style={styles.debugInfo}>
+                <Text style={styles.debugText}>
+                  압력: {lastStreamData.pressure.toFixed(1)}
+                </Text>
+                <Text style={styles.debugText}>
+                  속도: {lastStreamData.compressionRate} bpm
+                </Text>
+                <Text style={styles.debugText}>
+                  품질: {lastStreamData.quality}
+                </Text>
+              </View>
+            )}
           </View>
           <View style={styles.imagePlaceholder} />
         </View>
+
+        {/* SSE 스트림 수신용 WebView */}
+        <WebView
+          originWhitelist={["*"]}
+          source={{ html: sseHtml }}
+          onMessage={handleWebViewMessage}
+          javaScriptEnabled={true}
+          domStorageEnabled={false}
+          style={{ width: 0, height: 0, opacity: 0, position: "absolute" }}
+          onError={(e) => console.error("❌ [WV] 에러:", e.nativeEvent)}
+          onHttpError={(e) =>
+            console.error("❌ [WV] HTTP 에러:", e.nativeEvent)
+          }
+        />
       </View>
     </SafeAreaView>
   );
 
   const renderScreen = () => {
-    switch (screen) {
-      case 'loading':
+    switch (appState) {
+      case "loading":
         return <LoadingScreen />;
-      case 'countdown':
+      case "countdown":
         return <CountdownScreen countdown={countdown} />;
-      case 'training':
+      case "training":
         return renderTrainingScreen();
-      case 'error':
-        return <ErrorScreen errorMessage={error ?? '알 수 없는 오류'} onRetry={handleRetry} />;
+      case "error":
+        return (
+          <ErrorScreen
+            errorMessage={errorMessage || "알 수 없는 오류가 발생했습니다."}
+            onRetry={handleRetry}
+          />
+        );
       default:
         return <LoadingScreen />;
     }
   };
 
-  return <View style={{ flex: 1 }}>{renderScreen()}</View>;
+  return <View style={styles.root}>{renderScreen()}</View>;
 };
 
 const styles = StyleSheet.create({
-  trainingContainer: { flex: 1, flexDirection: 'row', backgroundColor: '#FFFFFF' },
+  root: { flex: 1 },
+  container: { flex: 1, flexDirection: "row", backgroundColor: "#FFFFFF" },
   mainContent: { flex: 1, padding: 40 },
-  title: { fontSize: 26, fontWeight: 'bold', color: '#FF7F50', marginBottom: 8 },
-  subtitle: { fontSize: 16, color: '#666666', marginBottom: 10 },
-  instructionText: { fontSize: 16, color: '#666666', marginBottom: 30, fontWeight: 'bold' },
-  contentRow: { flex: 1, flexDirection: 'row' },
-  feedbackContainer: {
+  title: {
+    fontSize: 26,
+    fontWeight: "bold",
+    color: "#FF7F50",
+    marginBottom: 8,
+  },
+  subtitle: { fontSize: 16, color: "#666666", marginBottom: 10 },
+  instruction: {
+    fontSize: 16,
+    color: "#666666",
+    marginBottom: 30,
+    fontWeight: "bold",
+  },
+  contentRow: { flex: 1, flexDirection: "row" },
+  feedbackBox: {
     flex: 1,
-    backgroundColor: '#FFE5D9',
+    backgroundColor: "#FFE5D9",
     borderRadius: 15,
     padding: 20,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginRight: 20,
   },
-  feedbackTitle: { fontSize: 16, fontWeight: 'bold', color: '#333333' },
-  feedbackText: { fontSize: 18, color: '#333333', textAlign: 'center' },
+  feedbackTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333333",
+    marginBottom: 10,
+  },
+  feedbackText: { fontSize: 18, color: "#333333", textAlign: "center" },
   imagePlaceholder: {
     flex: 1,
     borderWidth: 2,
-    borderColor: '#E0E0E0',
-    borderStyle: 'dashed',
+    borderColor: "#E0E0E0",
+    borderStyle: "dashed",
     borderRadius: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F9F9F9',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F9F9F9",
   },
-  placeholderText: { color: '#AAAAAA', fontSize: 16 },
+  debugInfo: {
+    marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: "#FFD0C0",
+  },
+  debugText: { fontSize: 12, color: "#666666", marginBottom: 4 },
 });
 
 export default TrainingFlowScreen;
